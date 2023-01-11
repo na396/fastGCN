@@ -9,9 +9,9 @@ r"""
 """
 
 ######################################################################################################################## libraries
-
+import pickle
 from data import *
-from classGCN import *
+from spectrumGCN import *
 from train import *
 from utils import *
 
@@ -30,14 +30,28 @@ test_num = None
 #
 weight_decay =5e-4
 learning_rate = 0.01
-num_epoch = 5000
-h1_dim = 128
-h2_dim = 128
+num_epoch = 10
+#
+mask_type="manualMask"
+#
+graph_less=False
+# spec_in=2*graph.num_classes
+# spec_out= graph.num_classes
+num_linear = 2
+add_relu = True
+conv1_out = 128
+conv_bias=True
+p_dropout=0.5
+#
+train_verbose = True
+train_keep = True
 
-pdrop= 0.5 # dropout percentage
+test_keep = True
+test_verbose = True
 
-#spec_in_dim = graph.num_classes
-#spec_out_dim = 2*graph.num_classes
+plt_sh = False
+plt_keep = True
+
 
 #dataset_name = ["Cora", "CiteSeer", "PubMed", "WikiCs", "Arxive", "Products"]
 dataset_name = ["Cora"]
@@ -51,26 +65,33 @@ for graph in graphs_name:
     graphs[graph] = spectral_embedding(graphs[graph], drp_first=True)
     graphs[graph] = trainValidationTest_split(graphs[graph], train_percent, train_num, val_percent, val_num, verbose=True)
 
-######################################################################################################################### resuls df
-epochResults = epochPerformanceDF()
-summaryResults = TrainValidationTestDF()
-modelResuls = {}
-optimizerResults = {}
-######################################################################################################################### model: vanilaGCN
+######################################################################################################################### results df
+epochResults = epochPerformanceDF()  # detailed of each epoch for train and validation set, both accuracy and loss
+summaryResults = TrainValidationTestDF() # summary of trained model for train, validation, and test, both accuracy and loss
+modelResults = {} # final model
+optimizerResults = {} # final optimizer
 
-mdl_name = "vanilaGCN"
+######################################################################################################################### model: spectrumGCN
+
 for key in graphs_name:
+
     ##################################################### initialization
     graph = graphs[key]
+    temp = "GraphLess" if graph_less else 'WithGraph'
+    mdl_name = "spectrumGCN" + '+' + str(graph.graph_name) + '+' + str(temp)
+
     print("graph is \n", graph.graph_name)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     graph = graph.to(device)
 
-    mdl = vanilaGCN(in_dim=graph.num_node_features,
-                    h1_dim=h1_dim,
-                    h2_dim=h2_dim,
-                    out_dim=graph.num_classes,
-                    pdrop=pdrop).to(device)
+    mdl = spectrumGCN(graph_less=graph_less,
+                 spec_in=2*graph.num_classes, spec_out=graph.num_classes,
+                 conv1_in_dim=graph.num_node_features, conv1_out_dim=conv1_out,
+                 conv2_out_dim=graph.num_classes,
+                 num_linear=2, add_relu=True,
+                 conv_bias=True,
+                 pdrop=p_dropout).to(device)
+
 
     opt = torch.optim.Adam(mdl.parameters(),
                            lr=learning_rate,
@@ -79,164 +100,37 @@ for key in graphs_name:
     print("\n")
     ##################################################### training phase
     print("entring training phase...\n")
-    mdl, opt, epochDF = train(model=mdl, model_name=mdl_name, optimizer=opt, mask_type="manualMask",
-                                    num_epoch=num_epoch, data=graph, keepResult=True, verbose=False)
+    mdl, opt, epochDF = train(model=mdl, model_name=mdl_name, optimizer=opt, mask_type=mask_type,
+                                num_epoch=num_epoch, data=graph, keepResult=train_keep, verbose=train_verbose)
 
-    plot_epoch(df=epochDF, model_name=mdl_name, data_name=graph.graph_name, col="loss", keep=True, sh=False)
-    plot_epoch(df=epochDF, model_name=mdl_name, data_name=graph.graph_name, col="accuracy", keep=True, sh=False)
+    plot_epoch(df=epochDF, model_name=mdl_name, data_name=graph.graph_name, col="loss", keep=plt_keep, sh=plt_sh)
+    plot_epoch(df=epochDF, model_name=mdl_name, data_name=graph.graph_name, col="accuracy", keep=plt_keep, sh=plt_sh)
 
-    results = pd.concat([epochResults, epochDF], ignore_index=True)
+    epochResults = pd.concat([epochResults, epochDF], ignore_index=True)
 
     print("\n")
 
+    ########################################## end of training phase
+
     ##################################################### test phase
     print("entring test phase...\n")
-    mdl, sumDF = test(model=mdl, model_name=mdl_name, data=graph, mask_type="manualMask", keepResult=True,
-                      verbose=True)
+    mdl, sumDF = test(model=mdl, model_name=mdl_name, data=graph, mask_type=mask_type, keepResult=test_keep,
+                      verbose=test_verbose)
     summaryResults = pd.concat([summaryResults, sumDF], ignore_index=True)
 
     ##################################################### saving results
     print("saving results...")
-    modelResuls[mdl_name] = mdl
-    optimizerResults[mdl_name] = opt
+    res = {'model_name':mdl_name, 'model':mdl, 'optimizer':opt,
+           'epochResults':epochResults, 'summaryResults':summaryResults}
+    #final_result = {str(mdl_name):res}
 
-######################################################################################################################### model: spectrumGCN_inLayer
+    ##########################################################################################  save the result
+    try:
+        final = pickle.load(open("dic.pickle", "rb"))
+        final[str(mdl_name)] = res
+    except (OSError, IOError) as e:
+        final = {}
+        final[str(mdl_name)] = res
+    pickle.dump(final, open("dic.pickle", "wb"))
 
-mdl_name = "spectrumGCN_inLayer"
-for key in graphs_name:
-    ##################################################### initialization
-    graph = graphs[key]
-    print("graph is \n", graph.graph_name)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    graph = graph.to(device)
 
-    mdl = spectralGCN_inLayer(data=graph,
-                      in_dim=graph.num_node_features,
-                      h1_dim=h1_dim,
-                      h2_dim=h2_dim,
-                      out_dim=graph.num_classes,
-                      spec_in_dim=graph.num_classes,
-                      spec_out_dim=2*graph.num_classes,
-                      lin=False, bias=False, allLayers=False, pdrop=pdrop).to(device)
-
-    opt = torch.optim.Adam(mdl.parameters(),
-                           lr=learning_rate,
-                            weight_decay=weight_decay)
-
-    print("\n")
-    ##################################################### training phase
-    print("entring training phase...\n")
-    mdl, opt, epochDF = train(model=mdl, model_name=mdl_name, optimizer=opt, mask_type="manualMask",
-                                    num_epoch=num_epoch, data=graph, keepResult=True, verbose=False)
-
-    plot_epoch(df=epochDF, model_name=mdl_name, data_name=graph.graph_name, col="loss", keep=True, sh=False)
-    plot_epoch(df=epochDF, model_name=mdl_name, data_name=graph.graph_name, col="accuracy", keep=True, sh=False)
-
-    results = pd.concat([epochResults, epochDF], ignore_index=True)
-
-    print("\n")
-
-    ##################################################### test phase
-    print("entring test phase...\n")
-    mdl, sumDF = test(model=mdl, model_name=mdl_name, data=graph, mask_type="manualMask", keepResult=True,
-                      verbose=True)
-    summaryResults = pd.concat([summaryResults, sumDF], ignore_index=True)
-
-    ##################################################### saving results
-    print("saving results...")
-    modelResuls[mdl_name] = mdl
-    optimizerResults[mdl_name] = opt
-
-######################################################################################################################### model: spectrumGCN_outLayer
-
-mdl_name = "spectrumGCN_outLayer"
-for key in graphs_name:
-    ##################################################### initialization
-    graph = graphs[key]
-    print("graph is \n", graph.graph_name)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    graph = graph.to(device)
-
-    mdl = spectralGCN_outLayer(data=graph,
-                      in_dim=graph.num_node_features,
-                      h1_dim=h1_dim,
-                      h2_dim=h2_dim,
-                      out_dim=graph.num_classes,
-                      spec_in_dim=graph.num_classes,
-                      spec_out_dim=2*graph.num_classes,
-                      lin=True, bias=False, pdrop=pdrop).to(device)
-
-    opt = torch.optim.Adam(mdl.parameters(),
-                           lr=learning_rate,
-                            weight_decay=weight_decay)
-
-    print("\n")
-    ##################################################### training phase
-    print("entring training phase...\n")
-    mdl, opt, epochDF = train(model=mdl, model_name=mdl_name, optimizer=opt, mask_type="manualMask",
-                                    num_epoch=num_epoch, data=graph, keepResult=True, verbose=False)
-
-    plot_epoch(df=epochDF, model_name=mdl_name, data_name=graph.graph_name, col="loss", keep=True, sh=False)
-    plot_epoch(df=epochDF, model_name=mdl_name, data_name=graph.graph_name, col="accuracy", keep=True, sh=False)
-
-    results = pd.concat([epochResults, epochDF], ignore_index=True)
-
-    print("\n")
-
-    ##################################################### test phase
-    print("entring test phase...\n")
-    mdl, sumDF = test(model=mdl, model_name=mdl_name, data=graph, mask_type="manualMask", keepResult=True,
-                      verbose=True)
-    summaryResults = pd.concat([summaryResults, sumDF], ignore_index=True)
-
-    ##################################################### saving results
-    print("saving results...")
-    modelResuls[mdl_name] = mdl
-    optimizerResults[mdl_name] = opt
-
-######################################################################################################################### model: spectrumGCN_hiddenLayer
-
-mdl_name = "spectrumGCN_hiddenLayer"
-for key in graphs_name:
-    ##################################################### initialization
-    graph = graphs[key]
-    print("graph is \n", graph.graph_name)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    graph = graph.to(device)
-
-    mdl = spectralGCN_hiddenLayer(data=graph,
-                      in_dim=graph.num_node_features,
-                      h1_dim=h1_dim,
-                      h2_dim=h2_dim,
-                      out_dim=graph.num_classes,
-                      spec_in_dim=graph.num_classes,
-                      spec_out_dim=2*graph.num_classes,
-                      lin=True, bias=False, allLayers=False, pdrop=pdrop).to(device)
-
-    opt = torch.optim.Adam(mdl.parameters(),
-                           lr=learning_rate,
-                            weight_decay=weight_decay)
-
-    print("\n")
-    ##################################################### training phase
-    print("entring training phase...\n")
-    mdl, opt, epochDF = train(model=mdl, model_name=mdl_name, optimizer=opt, mask_type="manualMask",
-                                    num_epoch=num_epoch, data=graph, keepResult=True, verbose=False)
-
-    plot_epoch(df=epochDF, model_name=mdl_name, data_name=graph.graph_name, col="loss", keep=True, sh=False)
-    plot_epoch(df=epochDF, model_name=mdl_name, data_name=graph.graph_name, col="accuracy", keep=True, sh=False)
-
-    results = pd.concat([epochResults, epochDF], ignore_index=True)
-
-    print("\n")
-
-    ##################################################### test phase
-    print("entring test phase...\n")
-    mdl, sumDF = test(model=mdl, model_name=mdl_name, data=graph, mask_type="manualMask", keepResult=True,
-                      verbose=True)
-    summaryResults = pd.concat([summaryResults, sumDF], ignore_index=True)
-
-    ##################################################### saving results
-    print("saving results...")
-    modelResuls[mdl_name] = mdl
-    optimizerResults[mdl_name] = opt
