@@ -4,8 +4,74 @@ from layers import *
 
 from torch.nn import Linear
 from torch.nn import Module
+from torch.nn import ModuleList
+
 
 from torch_geometric.nn import GCNConv
+
+######################################################################################################################### spectral_concatenation
+class spectral_concatenation(Module):
+
+    # performs the concatenation
+    def __init__(self, spec_in, spec_out, num_linear=2, add_relu=True):
+
+        # spec_in: input dimension for each linear layer, and also the number of dimension of egenvectors
+        # spec_out: output dimension for each liner layer
+        # num_linear: number of linear layer, default=2
+        # add_relu: if True, will add relu after normalization
+
+        super().__init__()
+
+        if num_linear ==1:
+            warnings.warn('number of linear layers for the spectral concatenation is 1, are you sure!...')
+        if num_linear ==0:
+            raise TypeError("number of linear layers for spectral concatenation is 0 \n it must be greater than 0")
+
+        self.spec_in = spec_in
+        self.spec_out = spec_out
+        self.numlinear = num_linear
+        self.add_relu = add_relu
+        self.reduce = torch.nn.Parameter(torch.FloatTensor(num_linear, spec_in, spec_out))
+        print("self.reduce ")
+        print(self.reduce.shape)
+        self.linears = ModuleList([Linear(in_features=spec_in, out_features=spec_out, bias=False) for _ in range(num_linear)])
+
+        self.reset_parameters()
+    ############################ reset_parameters
+    def reset_parameters(self):
+        # performs xavier weight initialization
+        for lin in self.linears:
+            torch.nn.init.xavier_uniform_(self.weight)
+
+    ############################ row_normalize
+    def row_normalize(self, X):
+        # normalize row of X to 1
+        return F.normalize(input=X, p=2.0, dim=1, eps=1e-12, out=None)
+
+    ############################ forward
+    def forward(self, X):
+
+        # ModuleList can act as an iterable, or be indexed using ints
+        # X: a matric spec_in time spec_out
+
+        embeds = []
+        for i, lin in enumerate(self.linears):
+            Y = lin(X)
+            Y = self.row_normalize(Y)
+            if self.add_relu:
+                Y = F.relu(Y)
+            embeds.append(Y)
+
+        out = torch.cat(tensors=[y for i, y in enumerate(embeds)], dim=1, out=None)
+        return out
+
+    ############################ __repr__
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' \
+               + str(self.spec_in) + ' -> ' \
+               + str(self.spec_out) + ', ' + \
+               'num_linear=' + str(self.numlinear) + ', ' + \
+               'add_relu=' + str(self.add_relu) + ')'
 
 ######################################################################################################################### class spectrumGCN_inLayer
 class spectralGCN_inLayer(Module):

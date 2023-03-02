@@ -1,13 +1,9 @@
 import warnings
 import torch
 
-from scipy.linalg import fractional_matrix_power
-
 import torch.nn.functional as F
 
-from torch.nn import Linear
 from torch.nn import Module
-from torch.nn import ModuleList
 
 from torch.nn.parameter import Parameter
 
@@ -21,7 +17,7 @@ class spectral_concatenation(Module):
     # performs the concatenation
     def __init__(self, spec_in, spec_out, num_linear=2, add_relu=True):
 
-        # spec_in: input dimension for each linear layer
+        # spec_in: input dimension for each linear layer, and also the number of dimension of egenvectors
         # spec_out: output dimension for each liner layer
         # num_linear: number of linear layer, default=2
         # add_relu: if True, will add relu after normalization
@@ -33,25 +29,46 @@ class spectral_concatenation(Module):
         if num_linear ==0:
             raise TypeError("number of linear layers for spectral concatenation is 0 \n it must be greater than 0")
 
+        self.spec_in = spec_in
+        self.spec_out = spec_out
         self.numlinear = num_linear
         self.add_relu = add_relu
-        self.linears = ModuleList([Linear(in_features=spec_in, out_features=spec_out, bias=False) for _ in range(num_linear)])
+        self.reduce = torch.nn.Parameter(torch.FloatTensor(num_linear, spec_in, spec_out))
 
+        self.reset_parameters()
+    ############################ reset_parameters
+    def reset_parameters(self):
+        # performs xavier weight initialization
+        #torch.nn.init.xavier_uniform_(self.reduce)
+        for nl in range(self.numlinear):
+            torch.nn.init.orthogonal_(self.reduce[nl])
+
+    ############################ row_normalize
     def row_normalize(self, X):
-        return F.normalize(input=X, p=2.0, dim=1, eps=1e-12, out=None)
+        # normalize row of X to 1
+        return F.normalize(input=X, p=2.0, dim=2, eps=1e-12, out=None)
 
+    ############################ forward
     def forward(self, X):
-        # ModuleList can act as an iterable, or be indexed using ints
 
-        embeds = []
-        for i, lin in enumerate(self.linears):
-            Y = lin(X)
-            Y = self.row_normalize(Y)
-            if self.add_relu:
-                Y = F.relu(Y)
-            embeds.append(Y)
-        out = torch.cat(tensors=[y for i, y in enumerate(embeds)], dim=1, out=None)
-        return out
+        # ModuleList can act as an iterable, or be indexed using ints
+        # X: a matric spec_in time spec_out
+
+        y = X @ self.reduce # X: eigenvectors, has spec_in=2k dimension, self.reduce [num_linear, spec_in=2k, specout=k]
+        y = self.row_normalize(y)
+        y = torch.transpose(y, 0, 1)
+        y = torch.flatten(y, start_dim=1)
+        if self.add_relu:
+            y = F.relu(y)
+        return y
+
+    ############################ __repr__
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' \
+               + str(self.spec_in) + ' -> ' \
+               + str(self.spec_out) + ', ' + \
+               'num_linear=' + str(self.numlinear) + ', ' + \
+               'add_relu=' + str(self.add_relu) + ')'
 
 ######################################################################################################################### convGCN
 class convGCN(Module):
@@ -96,7 +113,6 @@ class convGCN(Module):
         #      eg_vectors = reduced eg_vectors
 
         if self.graph_less: # graph convGCN with creating the adjacency matrix
-
             u = eg_vectors.sum(dim=0)
             deg = eg_vectors @ u
             deg = 1./deg
@@ -104,14 +120,16 @@ class convGCN(Module):
             out = torch.diag(deg) @ eg_vectors @ (eg_vectors_T @ x)
             out = out @ self.weights
             if self.bias is not None:
-                return out + self.bias
+                out + self.bias
 
         else: # we have the graph
             deg = degree(edge_index[0])
             deg = deg+1 # add_self_loops is always True
-            x = torch.from_numpy(fractional_matrix_power(torch.diag(deg), (1/2))) @ x
-            x = self.conv(x, edge_index)
-            out = torch.from_numpy(fractional_matrix_power(torch.diag(deg), (-1/2))) @ x
+            deg_12 = torch.pow(deg, 1/2)
+            out = torch.diag(deg_12) @ x
+            out= self.conv(out, edge_index)
+            deg_12 = torch.pow(deg, -1/2)
+            out = torch.diag(deg_12) @ out
         return out
 
     ############################ __repr__
@@ -120,4 +138,4 @@ class convGCN(Module):
                + str(self.in_dim) + ' -> ' \
                + str(self.out_dim) + ', ' + \
                'graph_less=' + str(self.graph_less) + ', ' + \
-               'bias=' + str(True if self.bias is not None else False) + ')'
+               'bias=' + str(True if self.bias or self.bias is not None else False) + ')'

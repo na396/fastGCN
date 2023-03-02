@@ -30,7 +30,6 @@ class vanilaGCN(Module):
 
         return F.log_softmax(x, dim=1)
 
-
 ######################################################################################################################### class spectraGCN
 class spectrumGCN(Module):
 
