@@ -2,20 +2,20 @@
 import warnings
 import math
 import numpy as np
-import networkx as nx
-#from networkx import from_numpy_matrix
-
 import torch
-from torch.linalg import eigh
 
 from torch_geometric.utils import to_dense_adj
-from torch_geometric.utils import dense_to_sparse
 from torch_geometric.utils import remove_self_loops
 from torch_geometric.utils import to_undirected
 from torch_geometric.utils import index_to_mask
 from torch_geometric.utils import degree
 
-
+from collections import Counter
+from torch_geometric.utils import to_scipy_sparse_matrix
+from torch_geometric.utils import from_scipy_sparse_matrix
+from scipy.sparse.csgraph import connected_components
+from scipy.sparse.linalg import eigsh
+from scipy.sparse import spdiags
 
 ######################################################################################################################### def inside
 def inside(feature, data):
@@ -24,6 +24,117 @@ def inside(feature, data):
         print(cap, getattr(data, feature))
     else:
         print("data does not have ", feature)
+
+######################################################################################################################### def createMask
+def createMask(data, split_idx):
+
+    # create train, val, test mask for ogb data
+    # data: ogb graph
+    # split_idx: its split
+
+    train_mask, val_mask, test_mask = split_idx["train"], split_idx["valid"], split_idx["test"]
+    mask_orig = torch.arange(start=0, end=data.x.shape[0])
+    data.train_mask = torch.isin(mask_orig, train_mask)
+    data.val_mask = torch.isin(mask_orig, val_mask)
+    data.test_mask = torch.isin(mask_orig, test_mask)
+
+    return data
+
+######################################################################################################################### def data_preparation
+def data_prepare(dataset_name, data_dir, maskInd=None):
+    # download, and prepare the semi-supervised graphs for node classification
+
+    ans = {}
+    if dataset_name == "Cora":
+        from torch_geometric.datasets import Planetoid
+
+        cora = Planetoid(name='Cora',
+                         root=data_dir)
+        print(str("Cora dataset of ") + str(len(cora)) + str(" graphs"))
+        cora = cora[0]
+        cora.graph_name = "Cora"
+        cora = data_summary(cora, "Cora")
+        cora = data_cleaning(cora, maskInd)
+        print("\n")
+        cora = data_summary(cora, "Cora")
+        ans = cora
+        print("\n")
+
+    if dataset_name == "CiteSeer":
+        from torch_geometric.datasets import Planetoid
+
+        citeseer = Planetoid(name='CiteSeer',
+                             root=data_dir)
+        print(str("CiteSeer dataset of ") + str(len(citeseer)) + str(" graphs"))
+        citeseer = citeseer[0]
+        citeseer.graph_name = "CiteSeer"
+        citeseer = data_summary(citeseer, "CiteSeer")
+        print("\n")
+        citeseer = data_cleaning(citeseer, maskInd)
+        citeseer = data_summary(citeseer, "CiteSeer")
+        ans = citeseer
+        print("\n")
+
+    if dataset_name == "PubMed":
+        from torch_geometric.datasets import Planetoid
+
+        pubmed = Planetoid(name='PubMed',
+                           root=data_dir, )
+        print(str("PubMed dataset of ") + str(len(pubmed)) + str(" graphs"))
+        pubmed = pubmed[0]
+        pubmed.graph_name = "PubMed"
+        pubmed = data_summary(pubmed, "PubMed")
+        print("\n")
+        pubmed = data_cleaning(pubmed, maskInd)
+        pubmed = data_summary(pubmed, "PubMed")
+        ans = pubmed
+        print("\n")
+
+    if dataset_name == "WikiCs":
+        from torch_geometric.datasets import WikiCS
+
+        wikics = WikiCS(root=data_dir)
+        print(str("WikiCs dataset of ") + str(len(wikics)) + str(" graphs"))
+        wikics = wikics[0]
+        wikics.graph_name = "WikiCs"
+        wikics = data_summary(wikics, "WikiCs")
+        print("\n")
+        wikics = data_cleaning(wikics, maskInd)
+        wikics = data_summary(wikics, "WikiCs")
+        ans = wikics
+        print("\n")
+
+    if dataset_name == "Arxiv":
+        from ogb.nodeproppred import PygNodePropPredDataset
+
+        arxive = PygNodePropPredDataset(name="ogbn-arxiv",
+                                        root=data_dir)
+        arxive = createMask(arxive[0], arxive.get_idx_split())
+        print(str("Arxiv dataset of ") + str(len(arxive)) + str(" graphs"))
+        arxive.graph_name = "Arxiv"
+        arxive = data_summary(arxive, "Arxiv")
+        print("\n")
+        arxive = data_cleaning(arxive, maskInd)
+        arxive = data_summary(arxive, "Arxiv")
+        ans = arxive
+        print("\n")
+
+    if dataset_name == "Products":
+        from ogb.nodeproppred import PygNodePropPredDataset
+
+        products = PygNodePropPredDataset(name="ogbn-products",
+                                        root=data_dir)
+        print(str("Products dataset of ") + str(len(products)) + str(" graphs"))
+        products = createMask(products[0], products.get_idx_split())
+        products.graph_name = "Products"
+        products = data_summary(products, "Products")
+        print("\n")
+        products = data_cleaning(products, maskInd)
+        products = data_summary(products, "Products")
+        ans = products
+        print("\n")
+
+    return ans
 
 ######################################################################################################################### def data_summary
 def data_summary(data, gname, verbose = True):
@@ -62,11 +173,11 @@ def data_summary(data, gname, verbose = True):
         print("is_coalesced ", data.is_coalesced())
 
         if hasattr(data, "train_mask"):
-            if data.train_mask.dim() >1:
+            if data.train_mask.dim() > 1:
                 print("number of different train split is ", data.train_mask.size(1))
             else:
                 print("number of different train split is ", 1)
-            if data.train_mask.dim() ==1:
+            if data.train_mask.dim() == 1:
                 print("train_mask.sum().item() ", data.train_mask.sum().item())
             else:
                 print("train_mask.sum().item() for first column", data.train_mask[:, 0].sum().item())
@@ -85,128 +196,8 @@ def data_summary(data, gname, verbose = True):
 
     return data
 
-######################################################################################################################### def data_preparation
-def data_prepare(dataset_name, data_dir):
-    # download, and prepare the semi-supervised graphs for node classification
-
-    ans = {}
-    if "Cora" in dataset_name:
-        from torch_geometric.datasets import Planetoid
-
-        cora = Planetoid(name='Cora',
-                         root=data_dir)
-        print(str("Cora dataset of ") + str(len(cora)) + str(" graphs"))
-        cora = cora[0]
-        cora.graph_name = "Cora"
-        cora = data_summary(cora, "Cora")
-        cora = data_cleaning(cora)
-        print("\n")
-        cora = data_summary(cora, "Cora")
-        ans["Cora"] = cora
-        print("\n")
-
-    if "CiteSeer" in dataset_name:
-        from torch_geometric.datasets import Planetoid
-
-        citeseer = Planetoid(name='CiteSeer',
-                             root=data_dir)
-        print(str("CiteSeer dataset of ") + str(len(citeseer)) + str(" graphs"))
-        citeseer = citeseer[0]
-        citeseer.graph_name = "CiteSeer"
-        citeseer = data_summary(citeseer, "CiteSeer")
-        print("\n")
-        citeseer = data_cleaning(citeseer)
-        citeseer = data_summary(citeseer, "CiteSeer")
-        ans["CiteSeer"] = citeseer
-        print("\n")
-
-    if "PubMed" in dataset_name:
-        from torch_geometric.datasets import Planetoid
-
-        pubmed = Planetoid(name='PubMed',
-                           root=data_dir, )
-        print(str("PubMed dataset of ") + str(len(pubmed)) + str(" graphs"))
-        pubmed = pubmed[0]
-        pubmed.graph_name = "PubMed"
-        pubmed = data_summary(pubmed, "PubMed")
-        print("\n")
-        pubmed = data_cleaning(pubmed)
-        pubmed = data_summary(pubmed, "PubMed")
-        ans["Pubmed"] = pubmed
-        print("\n")
-
-    if "WikiCs" in dataset_name:
-        from torch_geometric.datasets import WikiCS
-
-        wikics = WikiCS(root=data_dir)
-        print(str("WikiCs dataset of ") + str(len(wikics)) + str(" graphs"))
-        wikics = wikics[0]
-        wikics.graph_name = "WikiCs"
-        wikics = data_summary(wikics, "WikiCs")
-        print("\n")
-        wikics = data_cleaning(wikics)
-        wikics = data_summary(wikics, "WikiCs")
-        ans["WikiCs"] = wikics
-        print("\n")
-
-    if "Arxiv" in dataset_name:
-        from ogb.nodeproppred import PygNodePropPredDataset
-
-        arxive = PygNodePropPredDataset(name="ogbn-arxiv",
-                                        root=data_dir)
-        print(str("Arxiv dataset of ") + str(len(arxive)) + str(" graphs"))
-        arxive = arxive[0]
-        arxive.graph_name = "Arxiv"
-        arxive = data_summary(arxive, "Arxiv")
-        print("\n")
-        arxive = data_cleaning(arxive)
-        arxive = data_summary(arxive, "Arxiv")
-        ans["Arxiv"] = arxive
-        print("\n")
-
-    if "Products" in dataset_name:
-        from ogb.nodeproppred import PygNodePropPredDataset
-
-        products = PygNodePropPredDataset(name="ogbn-products",
-                                        root=data_dir)
-        print(str("Products dataset of ") + str(len(products)) + str(" graphs"))
-        products = products[0]
-        products.graph_name = "Products"
-        products = data_summary(products, "Products")
-        print("\n")
-        products = data_cleaning(products)
-        products = data_summary(products, "Products")
-        ans["Products"] = products
-        print("\n")
-
-    return ans
-
-######################################################################################################################### def zeroInds
-def to_np_adjacencyMatrix(edge_index):
-
-    adja = to_dense_adj(edge_index)
-    adja = torch.squeeze(adja)
-    adja = adja.numpy()
-
-    return adja
-
-######################################################################################################################### def largestCC
-def largestCC(edge_index) -> torch.tensor:
-
-    # net: an object of networkx
-    # returns the index of nodes in the largest connceted components for an undirected graph
-
-    A = to_np_adjacencyMatrix(edge_index)
-    net = nx.from_numpy_matrix(A)
-    cc = [net.subgraph(c).copy() for c in nx.connected_components(net)]
-    cc_len = [len(c.nodes) for c in cc]
-    lcc = int(np.argmax(cc_len))
-    keep_NodeInds = list(cc[lcc].nodes)
-
-    return torch.tensor(keep_NodeInds).int().long()
-
 ######################################################################################################################### def drpSmallCCnodes
-def data_cleaning(data):
+def data_cleaning(data, maskInd=None):
 
     print("graph ", data.graph_name)
     x, edge_index, edge_attr, num_node = data.x, data.edge_index, data.edge_attr, data.num_nodes
@@ -215,30 +206,45 @@ def data_cleaning(data):
         print("removing self loops...")
         edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
 
-    # if data.has_isolated_nodes():
-    #     print("removing isolated nodes...")
-    #     num_nodes, edge_index, mask_nodes = remove_isolated_nodes(edge_index)
-
     if data.is_directed():
         print("making graph " + str(data.graph_name) + " undirected...")
         edge_index = to_undirected(edge_index)
 
-    nodes = largestCC(edge_index)
+    A = to_scipy_sparse_matrix(edge_index=edge_index, num_nodes=num_node).tocsr()
+    cc = connected_components(A, directed=False)[1]
+    cc = np.array(cc)
+    freq = Counter(cc)
+    cc_label = max(freq, key=freq.get)
+    nodes = np.where(cc == cc_label)[0]
+    A = A[:, nodes][nodes, :]
+
+    edge_index, _ = from_scipy_sparse_matrix(A)
+    nodes = torch.tensor(nodes)
     mask = index_to_mask(nodes)
-
-    A = to_np_adjacencyMatrix(edge_index)
-    A = A[nodes.numpy()[:, None], nodes.numpy()]
-    A = torch.tensor(A)
-    A = torch.unsqueeze(A, dim=0)
-
-    data.edge_index, _ = dense_to_sparse(A)
     data.edge_attr = edge_attr
+    data.edge_index = edge_index
     data.x = x[nodes]
     data.y = data.y[nodes]
 
-    data.train_mask = data.train_mask[nodes] if data.train_mask.dim()==1 else  data.train_mask[nodes,: ]
-    data.val_mask = data.val_mask[nodes] if data.val_mask.dim() == 1 else data.val_mask[nodes,:]
-    data.test_mask = data.test_mask[nodes] if data.test_mask.dim() == 1 else data.test_mask[nodes, :]
+    if maskInd==None: maskInd = torch.randint(0, data.train_mask.shape[1], (1,))
+
+    if data.train_mask.dim() == 1:
+        data.train_mask = data.train_mask[nodes]
+    else:
+        data.train_multipleMask = data.train_mask[nodes, :]
+        data.train_mask = data.train_mask[nodes, maskInd]
+
+    if data.val_mask.dim() == 1:
+        data.val_mask = data.val_mask[nodes]
+    else:
+        data.val_multipleMask = data.val_mask[nodes, :]
+        data.val_mask = data.val_mask[nodes, maskInd]
+
+    if data.test_mask.dim() == 1:
+        data.test_mask = data.test_mask[nodes]
+    else:
+        data.test_multipleMask = data.test_mask[nodes, :]
+        data.test_mask = data.test_mask[nodes, maskInd]
 
     data.num_nodes = data.x.shape[0]
     data.num_edges = data.edge_index.shape[1]
@@ -249,32 +255,34 @@ def data_cleaning(data):
     return data
 
 ######################################################################################################################### def spectral_embedding
-def spectral_embedding(data, drp_first=True):
+def spectral_embedding(data, ncol=0, drp_first=True):
 
+    # calculates spectral embedding
     # data: graph
 
+    k = data.num_nodes if ncol == 0 else ncol+1
+
     x, edge_index = data.x, data.edge_index
-    A = to_dense_adj(edge_index)
-    A = torch.squeeze(A)
-
     deg = degree(edge_index[0])
-    D = torch.diag(1. /torch.sqrt(deg))
+    A = to_scipy_sparse_matrix(edge_index=edge_index).tocsr()
+    D = spdiags(1/deg.sqrt(), 0, data.num_nodes, data.num_nodes)
 
-    DA = torch.matmul(D,A)
-    L = torch.matmul(DA, D)
-    eigs = eigh(L)
-    X = eigs.eigenvalues
-    Y = eigs.eigenvectors
+    DA = D.dot(A)
+    L = DA.dot(D)
+
+    X, Y = eigsh(A=L, k=k, which='LM')
+    X = torch.tensor(X)
+    Y = torch.tensor(Y)
 
     Xs = X.sort(descending=True)
     X = Xs.values
     Y = Y[:, Xs.indices]
 
+    D = torch.diag(1. / torch.sqrt(deg))
     Y = torch.matmul(D, Y)
-    Y = torch.sub(Y, torch.matmul(deg, Y)/deg.sum())
+    Y = torch.sub(Y, torch.matmul(deg, Y) / deg.sum())
 
     D = torch.diag(deg)
-
     for j in range(Y.size(1)):
         x = Y[:, j]
         Y[:,j] = x/torch.sqrt(torch.matmul(torch.matmul(x, D), x))
@@ -285,7 +293,7 @@ def spectral_embedding(data, drp_first=True):
         warnings.warn("constant condition does not hold! ")
 
     data.eigenvectors = Y
-    data.eigenvalues = X
+    data.eigenvalues = X[1:len(X)]
 
     if (torch.round(data.eigenvalues, decimals=5)==1).sum() >1:
         raise ValueError('eigenvalues equal to 1 is more than 1 in spectral_embedding...')

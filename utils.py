@@ -57,7 +57,7 @@ def accuracy(pred, true_label, verbose=False):
     return acc
 
 ######################################################################################################################### def plot_epoch
-def plot_epoch(df, model_name, data_name, plt_dir, graph_mode, col = "loss", keep=True, sh=True):
+def plot_epoch(df, model_name, data_name, plt_dir, graph_mode, col = "loss", keep=True, sh=True, imagetype="png"):
 
     # plots the train/validation loss with respect to number of epoch
     # df.column:
@@ -87,7 +87,7 @@ def plot_epoch(df, model_name, data_name, plt_dir, graph_mode, col = "loss", kee
     plt.legend()
 
     if keep:
-        cap = str(plt_dir) + str(model_name) + "_ " + str(data_name)+ "_" + str(col) + "_TrainAndValidation.svg"
+        cap = str(plt_dir) + str(model_name) + "_ " + str(data_name)+ "_" + str(col) + "_TrainAndValidation."+str(imagetype)
         plt.savefig(cap)
     if sh: plt.show()
     plt.close()

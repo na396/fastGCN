@@ -50,9 +50,9 @@ def train(model, model_name, optimizer, num_epoch, data, mask_type="perClass", k
         if keepResult:
             dic = {"model": model_name, "data": data.graph_name, "mask": mask_type,
                    "epoch_number": epoch+1, "epoch_time":time.time() - t,
-                   "training_loss": loss_train.detach().numpy(), "training_accuracy": acc_train,
-                   "validation_loss":loss_val.detach().numpy(), "validation_accuracy": acc_val,
-                   "test_loss":loss_test.detach().numpy(), "test_accuracy":acc_test}
+                   "training_loss": loss_train.cpu().detach().numpy(), "training_accuracy": acc_train,
+                   "validation_loss":loss_val.cpu().detach().numpy(), "validation_accuracy": acc_val,
+                   "test_loss":loss_test.cpu().detach().numpy(), "test_accuracy":acc_test}
 
             detailDF = appendDF(detailDF, dic)
 
@@ -98,9 +98,9 @@ def test(model, model_name, data, mask_type="manualMask", keepResult=True, verbo
 
     if keepResult:
         dic = {"model": model_name, "data": data.graph_name, "mask": mask_type, "model_accuracy": acc_model.item(),
-               "training_loss": loss_train.detach().numpy(), "training_accuracy": acc_train,
-               "validation_loss": loss_val.detach().numpy(), "validation_accuracy": acc_val,
-               "test_loss": loss_test.detach().numpy(), "test_accuracy": acc_test}
+               "training_loss": loss_train.cpu().detach().numpy(), "training_accuracy": acc_train,
+               "validation_loss": loss_val.cpu().detach().numpy(), "validation_accuracy": acc_val,
+               "test_loss": loss_test.cpu().detach().numpy(), "test_accuracy": acc_test}
 
         sumDF = appendDF(sumDF, dic)
 
