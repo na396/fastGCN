@@ -1,6 +1,7 @@
 """
 Practical Fucntions
 """
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
@@ -13,6 +14,21 @@ def torchStatus():
     print("torch CUDA available: ", torch.cuda.is_available())
     print("torch number of GPU: ", torch.cuda.device_count())
 
+
+######################################################################################################################### def gpu_setup
+"""
+    GPU Setup
+"""
+def gpu_setup(use_gpu):
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+
+    if torch.cuda.is_available() and use_gpu:
+        print('cuda available with GPU:',torch.cuda.get_device_name(0))
+        device = torch.device("cuda")
+    else:
+        print('cuda not available')
+        device = torch.device("cpu")
+    return device
 
 ######################################################################################################################### def TrainValidationTestDF
 def TrainValidationTestDF():
@@ -57,7 +73,7 @@ def accuracy(pred, true_label, verbose=False):
     return acc
 
 ######################################################################################################################### def plot_epoch
-def plot_epoch(df, model_name, data_name, plt_dir, graph_mode, col = "loss", keep=True, sh=True, imagetype="png"):
+def plot_epoch(df, model_name, plt_dir, col = "loss", keep=True, sh=True, imagetype="png"):
 
     # plots the train/validation loss with respect to number of epoch
     # df.column:
@@ -75,8 +91,7 @@ def plot_epoch(df, model_name, data_name, plt_dir, graph_mode, col = "loss", kee
     elif col == "accuracy": cols=["training_accuracy", "validation_accuracy", "test_accuracy"]
     else: raise ValueError('col in plot_epoch is not defines...')
 
-    matn = "WithOutGraph" if graph_mode == False else "WithGraph"
-    cap = str(model_name) + "_" + str(data_name) + "_" + str(matn) + "_Training and Validation " + str(col)
+    cap = str(model_name) + "_" + str(col)
     plt.figure()
     plt.plot(df["epoch_number"], df[cols[0]], color='b', label='training set')
     plt.plot(df["epoch_number"], df[cols[1]], color='g', label='validation set')
@@ -87,7 +102,7 @@ def plot_epoch(df, model_name, data_name, plt_dir, graph_mode, col = "loss", kee
     plt.legend()
 
     if keep:
-        cap = str(plt_dir) + str(model_name) + "_ " + str(data_name)+ "_" + str(col) + "_TrainAndValidation."+str(imagetype)
+        cap = str(plt_dir) + str(model_name) + "_" + str(col) + "."+str(imagetype)
         plt.savefig(cap)
     if sh: plt.show()
     plt.close()

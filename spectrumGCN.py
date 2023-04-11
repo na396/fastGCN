@@ -74,13 +74,13 @@ class spectrumGCN(Module):
 
         if self.graph_less:
 
-            eg_vectors = self.spec_concat(eg_vectors) # a tensor of n * 2k
+            Xp = self.spec_concat(eg_vectors) # a tensor of n * 2k
 
-            x = self.conv_1(x, edge_index, eg_vectors) # a tensor of n * conv1_out_dim
+            x = self.conv_1(x, edge_index, Xp) # a tensor of n * conv1_out_dim
             x = F.relu(x)
             x = F.dropout(x, p=self.p_dropout, training=self.training)
 
-            x = self.conv_2(x, edge_index, eg_vectors)
+            x = self.conv_2(x, edge_index, Xp)
 
             return F.log_softmax(x, dim=1)
 

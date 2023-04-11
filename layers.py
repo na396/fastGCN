@@ -1,10 +1,8 @@
 import warnings
 import torch
 
-import torch.nn.functional as F
-
 from torch.nn import Module
-
+import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 
 from torch_geometric.nn import GCNConv
@@ -103,21 +101,21 @@ class convGCN(Module):
             torch.nn.init.zeros_(self.bias)
 
     ############################ forward
-    def forward(self, x, edge_index, eg_vectors):
+    def forward(self, x, edge_index, Xp):
         # performs graph convolution neural networks
         # it uses non-symmetric graph laplacian
 
         # data: an object of data in torch_geometric
         #      x: feature map
         #      edge_index: edge_index
-        #      eg_vectors = reduced eg_vectors
+        #     Xp: reduced eg_vectors
 
         if self.graph_less: # graph convGCN with creating the adjacency matrix
-            u = eg_vectors.sum(dim=0)
-            deg = eg_vectors @ u
+            u = Xp.sum(dim=0)
+            deg = Xp @ u
             deg = 1./deg
-            eg_vectors_T = torch.transpose(eg_vectors, 0, 1)
-            out = torch.diag(deg) @ eg_vectors @ (eg_vectors_T @ x)
+            eg_vectors_T = torch.transpose(Xp, 0, 1)
+            out = torch.diag(deg) @ Xp @ (eg_vectors_T @ x)
             out = out @ self.weights
             if self.bias is not None:
                 out + self.bias
