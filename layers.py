@@ -2,6 +2,9 @@ import warnings
 import torch
 
 from torch.nn import Module
+from torch.nn import ModuleList
+from torch.nn import Linear
+from torch.nn import ReLU
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 
@@ -22,9 +25,9 @@ class spectral_concatenation(Module):
 
         super().__init__()
 
-        if num_linear ==1:
+        if num_linear == 1:
             warnings.warn('number of linear layers for the spectral concatenation is 1, are you sure!...')
-        if num_linear ==0:
+        if num_linear == 0:
             raise TypeError("number of linear layers for spectral concatenation is 0 \n it must be greater than 0")
 
         self.spec_in = spec_in
@@ -37,6 +40,7 @@ class spectral_concatenation(Module):
     ############################ reset_parameters
     def reset_parameters(self):
         # performs xavier weight initialization
+
         #torch.nn.init.xavier_uniform_(self.reduce)
         for nl in range(self.numlinear):
             torch.nn.init.orthogonal_(self.reduce[nl])
@@ -44,6 +48,7 @@ class spectral_concatenation(Module):
     ############################ row_normalize
     def row_normalize(self, X):
         # normalize row of X to 1
+
         return F.normalize(input=X, p=2.0, dim=2, eps=1e-12, out=None)
 
     ############################ forward
@@ -57,7 +62,9 @@ class spectral_concatenation(Module):
         y = torch.transpose(y, 0, 1)
         y = torch.flatten(y, start_dim=1)
         if self.add_relu:
-            y = F.relu(y)
+            y1 = F.relu(y)
+            y2 = F.relu(-y)
+            return torch.hstack((y1, y2))
         return y
 
     ############################ __repr__
@@ -114,8 +121,8 @@ class convGCN(Module):
             u = Xp.sum(dim=0)
             deg = Xp @ u
             deg = 1./deg
-            eg_vectors_T = torch.transpose(Xp, 0, 1)
-            out = torch.diag(deg) @ Xp @ (eg_vectors_T @ x)
+            Xp_T = torch.transpose(Xp, 0, 1)
+            out = torch.diag(deg) @ Xp @ (Xp_T @ x)
             out = out @ self.weights
             if self.bias is not None:
                 out + self.bias
@@ -132,8 +139,84 @@ class convGCN(Module):
 
     ############################ __repr__
     def __repr__(self):
-        return self.__class__.__name__ + ' (' \
-               + str(self.in_dim) + ' -> ' \
-               + str(self.out_dim) + ', ' + \
-               'graph_less=' + str(self.graph_less) + ', ' + \
-               'bias=' + str(True if self.bias or self.bias is not None else False) + ')'
+
+        return(self.__class__.__name__ + ' ('
+               + str(self.in_dim) + ' -> '
+               + str(self.out_dim) + ', ' +
+               'graph_less=' + str(self.graph_less) + ')' )
+
+######################################################################################################################### vanila_mlp
+class dynamicMLP(Module):
+
+    def __init__(self, in_dim, hidden_dim, out_dim, num_lin=2, add_relu=True, bias:bool=True, init="xavier"):
+
+
+        # in_dim: input dimension
+        # out_dim: output dimension
+        # hidden_dim: if a list, contains the list of each hidden layer (len shows the number of hidden layers)
+        #              if an integer, then all the hidden layer dimension are the same as hidden_dim integer
+        # num_lin: number of linear layer, this value is ignored if hidden_dim is a list
+        # add_relu: Boolean, if True add relu after each linear, default is True
+        # bias: Boolean, if True adds bias to lienar layer, default is True
+        # init: a string, identify the ways of weight initialization, either "xavier" or "orthogonal"
+
+
+        super().__init__()
+
+        ####################### attributes & methods
+        self.in_dim = in_dim
+        self.hidden_dim = hidden_dim
+        self.out_dim = out_dim
+        self.num_lin = num_lin
+        self.add_relu = add_relu
+        self.bias = bias
+        self.init = init
+
+        ############################
+        dims = [hidden_dim] * (num_lin-1) if isinstance(hidden_dim, int) else hidden_dim
+
+        dims.insert(0, in_dim)
+        dims.append(out_dim)
+        self.dims = dims
+
+        print(f"dims are {dims}")
+
+        self.linears = ModuleList()
+        self.relu = ReLU()
+        for i in range(len(self.dims) - 1):
+            self.linears.append(Linear(dims[i], dims[i+1], bias=self.bias))
+            if self.add_relu: self.linears.append(self.relu)
+
+        self.reset_parameters()
+
+    ############################ reset_parameters
+    def reset_parameters(self):
+
+        if self.init == "xavier":
+
+            for i in range(0, len(self.linears), 2):
+                torch.nn.init.xavier_uniform_(self.linears[i].weight)
+
+        elif self.init == "orthogonal":
+            for i in range(len(self.linears)):
+                torch.nn.init.xavier_uniform_(self.linears[i].weight)
+
+    ############################ forward
+    def forward(self, x):
+        # performs multi-layared perceptron
+        # it takes x as the input (i.e. either symmetric spectral embedding, non-symmetric spectral embedding,
+        #                                       deep walk network embedding
+        #      x: feature map
+
+        for layer in self.linears:
+            x = layer(x)
+
+        return x
+
+    ############################ __repr__
+    def __repr__(self):
+        rep = ""
+        for d in self.dims:
+            rep += rep + " -> " + str(d)
+
+        return(self.__class__.__name__ + ' (' + str(rep) + " ) " )

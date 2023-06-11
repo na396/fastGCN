@@ -1,21 +1,28 @@
+from utils import *
 
+import time
 import warnings
+from collections import Counter
 import math
+
 import numpy as np
 import torch
+from torch.optim import SparseAdam
+from torch.utils.data import DataLoader
 
 from torch_geometric.utils import remove_self_loops
 from torch_geometric.utils import to_undirected
 from torch_geometric.utils import index_to_mask
 from torch_geometric.utils import degree
-
-from collections import Counter
 from torch_geometric.utils import to_scipy_sparse_matrix
 from torch_geometric.utils import from_scipy_sparse_matrix
+
+import dgl
+from dgl.nn.pytorch import DeepWalk
+
 from scipy.sparse.csgraph import connected_components
 from scipy.sparse.linalg import eigsh
 from scipy.sparse import spdiags
-
 ######################################################################################################################### def inside
 def inside(feature, data):
     if hasattr(data, feature):
@@ -40,9 +47,10 @@ def createMask(data, split_idx):
     return data
 
 ######################################################################################################################### def data_preparation
-def data_prepare(dataset_name, data_dir, maskInd=None):
+def data_prepare(dataset_name, root_dir, maskInd=None):
     # download, and prepare the semi-supervised graphs for node classification
 
+    data_dir = str(root_dir) + "/DataSets/"
     ans = {}
     if dataset_name == "Cora":
         from torch_geometric.datasets import Planetoid
@@ -254,7 +262,7 @@ def data_cleaning(data, maskInd=None):
     return data
 
 ######################################################################################################################### def spectral_embedding
-def spectral_embedding(data, dataset_name, ncol=0, drp_first=True, use_cache = False):
+def spectral_embedding(data, dataset_name, root_dir, ncol=0, drp_first=True, use_cache = False):
 
     # calculates spectral embedding
     # data: graph
@@ -270,13 +278,16 @@ def spectral_embedding(data, dataset_name, ncol=0, drp_first=True, use_cache = F
     DA = D.dot(A)
     L = DA.dot(D)
 
+    cache_dir_egval = root_dir + "/Cache/eigval_embedding_" + str(dataset_name) + ".pt"
+    cache_dir_egvec = root_dir + "/Cache/eigvec_embedding_" + str(dataset_name) + ".pt"
+
     if use_cache:
-        X = torch.load(f'Y:/Root/Study/PhD - All/Contributions/Paper 4 - ICML - GNN/Code/Cache/eigval_embedding_{dataset_name}.pt', map_location=torch.device('cpu'))
-        Y = torch.load(f'Y:/Root/Study/PhD - All/Contributions/Paper 4 - ICML - GNN/Code/Cache/eigvec_embedding_{dataset_name}.pt', map_location=torch.device('cpu'))
+        X = torch.load(cache_dir_egval, map_location=torch.device('cpu'))
+        Y = torch.load(cache_dir_egvec, map_location=torch.device('cpu'))
     else:
         X, Y = eigsh(A=L, k=k, which='LM')
-        torch.save(X, f'Y:/Root/Study/PhD - All/Contributions/Paper 4 - ICML - GNN/Code/Cache/eigval_embedding_{dataset_name}.pt')
-        torch.save(Y, f'Y:/Root/Study/PhD - All/Contributions/Paper 4 - ICML - GNN/Code/Cache/eigvec_embedding_{dataset_name}.pt')
+        torch.save(X, cache_dir_egval)
+        torch.save(Y, cache_dir_egvec)
 
     X = torch.tensor(X)
     Y = torch.tensor(Y)
@@ -291,7 +302,7 @@ def spectral_embedding(data, dataset_name, ncol=0, drp_first=True, use_cache = F
     Y = torch.sub(Y, torch.matmul(deg, Y) / deg.sum())
 
     # D = torch.diag(deg)
-    D = torch.sparse.spdiags(deg, torch.tensor([0]), (data.num_nodes, data.num_nodes))
+    #D = torch.sparse.spdiags(deg, torch.tensor([0]), (data.num_nodes, data.num_nodes))
     for j in range(Y.size(1)):
         x = Y[:, j]
         Y[:,j] = x/torch.sqrt(torch.matmul(torch.mul(x, deg), x))
@@ -308,6 +319,104 @@ def spectral_embedding(data, dataset_name, ncol=0, drp_first=True, use_cache = F
         raise ValueError('eigenvalues equal to 1 is more than 1 in spectral_embedding...')
 
     return data
+
+######################################################################################################################### def spectral_embedding_sym_nsym
+def embedding(data, dataset_name, root_dir, ncol=0, drp_first=True, use_cache = False, mode="non-symmetric"):
+
+    # calculates spectral embedding
+    # data: graph
+    # dataset_name: name of the dataset, either "Cora", "CiteSeer", "PubMed", "WikiCs", "Arxiv", "Products"
+
+    if mode in ["non-symmetric", "symmetric"]:
+        k = data.num_nodes if ncol == 0 else ncol+1
+
+        x, edge_index = data.x, data.edge_index
+        deg = degree(edge_index[0])
+        A = to_scipy_sparse_matrix(edge_index=edge_index).tocsr()
+        D = spdiags(1/deg.sqrt(), 0, data.num_nodes, data.num_nodes)
+
+        DA = D.dot(A)
+        L = DA.dot(D)
+
+        cache_dir_egval = root_dir + "/Cache/eigval_embedding_" + str(dataset_name) + ".pt"
+        cache_dir_egvec = root_dir + "/Cache/eigvec_embedding_" + str(dataset_name) + ".pt"
+
+        if use_cache:
+            X = torch.load(cache_dir_egval, map_location=torch.device('cpu'))
+            Y = torch.load(cache_dir_egvec, map_location=torch.device('cpu'))
+        else:
+            X, Y = eigsh(A=L, k=k, which='LM')
+            torch.save(X, cache_dir_egval)
+            torch.save(Y, cache_dir_egvec)
+
+        X = torch.tensor(X)
+        Y = torch.tensor(Y)
+
+        Xs = X.sort(descending=True)
+        X = Xs.values
+        Y = Y[:, Xs.indices]
+
+        if mode == "symmetric": # row_wise multiplication each row of Y with 1/sqrt(deg)
+            if drp_first: Y = Y[:, 1:Y.size(1)]
+            data.embedding_vectors = Y
+            data.embedding_values = X
+
+            return data
+
+        D = torch.sparse.spdiags(1 / deg.sqrt(), torch.tensor([0]), (data.num_nodes, data.num_nodes))
+        Y = torch.matmul(D, Y)
+        Y = torch.sub(Y, torch.matmul(deg, Y) / deg.sum())
+        for j in range(Y.size(1)):
+            x = Y[:, j]
+            Y[:,j] = x/torch.sqrt(torch.matmul(torch.mul(x, deg), x))
+
+        if drp_first: Y = Y[:, 1:Y.size(1)]
+        constant = torch.matmul(torch.mul(Y[:, 0], deg), Y[:,0])
+        if torch.round(constant, decimals=5) != 1:
+            warnings.warn("constant condition does not hold! ")
+
+        data.embedding_vectors = Y
+        data.embedding_values = X[1:len(X)]
+
+        if (torch.round(data.embedding_values, decimals=5)==1).sum() >1:
+            raise ValueError('eigenvalues equal to 1 is more than 1 in spectral_embedding...')
+
+        return data
+
+######################################################################################################################### def deepwalk
+def deepwalk(data, emb_dim=128, learning_rate=0.01, n_epoch=1000, mask_type="original", batch_size=128):
+
+    print(f"calculating deepwalk, it may take time!")
+    t = time.time()
+
+    if mask_type == "allClasses":
+        data.train_mask_final = data.trainMask_allClasses
+        data.val_mask_final = data.valMask_allClasses
+        data.test_mask_final = data.testMask_allClasses
+    elif mask_type == "original":
+        data.train_mask_final = data.train_mask
+        data.val_mask_final = data.val_mask
+        data.test_mask_final = data.test_mask
+    elif mask_type == "perClass":
+        data.train_mask_final = data.trainMask_perClass
+        data.val_mask_final = data.valMask_perClass
+        data.test_mask_final = data.testMask_perClass
+
+    g = to_dgl(data)
+    mdl = DeepWalk(g, emb_dim=emb_dim)
+    dataloader = DataLoader(torch.arange(g.num_nodes()), batch_size=batch_size,
+                            shuffle=True, collate_fn=mdl.sample)
+    opt = SparseAdam(mdl.parameters(), lr=learning_rate)
+
+    for epoch in range(n_epoch):
+        for batch_walk in dataloader:
+            loss = mdl(batch_walk)
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+
+    print(f"deep walk takes {time.time() - t}")
+    return mdl.node_embed.weight.detach()
 
 ######################################################################################################################### def trainValidation_inClassSplit
 def trainValidationTest_inClassSplit(data, label, trainVal_percent, train_percent, train_num, val_num):
@@ -349,8 +458,6 @@ def trainValidationTest_splitPerClass(data, trainVal_percent, train_percent, tra
     # val_percent: percentage for validation set
     # val_num: number of points for validation set
     # the remaining will be used for test
-
-    ################################################################
 
     ################################################################
     train_all = val_all = test_all = torch.tensor([])
@@ -445,4 +552,25 @@ def trainValidationTest_splitAllClasses(data, train_percent=None, train_num=None
 
     return data
 
+######################################################################################################################### def to_dgl
+def to_dgl(data):
 
+    # cinverts data object to dgl object
+
+
+    row, col = data.edge_index
+    g = dgl.graph((row, col))
+
+    assert data.train_mask_final.shape[0] == g.num_nodes(), "Size mismatch for train_mask_final"
+    assert data.val_mask_final.shape[0] == g.num_nodes(), "Size mismatch for val_mask_final"
+    assert data.test_mask_final.shape[0] == g.num_nodes(), "Size mismatch for test_mask_final"
+
+    g.ndata["train_mask"] = data.train_mask
+    g.ndata["label"] = data.y
+    g.ndata["val_mask"] = data.val_mask
+    g.ndata["test_mask"] = data.test_mask
+    g.ndata['x'] = data.x
+
+    if hasattr(data, "edge_attr") and data.edge_attr != None: g.edata = data.edge_attr
+
+    return g

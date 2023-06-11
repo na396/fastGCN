@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 
 ######################################################################################################################### def train
-def train(model, model_name, optimizer, num_epoch, data, mask_type="perClass", keepResult=True, verbose=True):
+def train(model, optimizer, num_epoch, data, mask_type="perClass", keepResult=True, verbose=True, iter_num=None):
 
     # perform training phase on the input data
     # mdl: model
@@ -28,10 +28,6 @@ def train(model, model_name, optimizer, num_epoch, data, mask_type="perClass", k
 
     if keepResult: detailDF = epochPerformanceDF()
 
-    print("model: ", model_name)
-    print("graph_name: ", data.graph_name)
-    print("\n")
-
     t = time.time()
     model.train()
     for epoch in range(num_epoch):
@@ -40,7 +36,6 @@ def train(model, model_name, optimizer, num_epoch, data, mask_type="perClass", k
 
         loss_train = F.nll_loss(out[data.train_mask_final], data.y[data.train_mask_final])
         acc_train = accuracy(out[data.train_mask_final], data.y[data.train_mask_final])
-
         loss_val = F.nll_loss(out[data.val_mask_final], data.y[data.val_mask_final])
         acc_val = accuracy(out[data.val_mask_final], data.y[data.val_mask_final])
 
@@ -48,17 +43,17 @@ def train(model, model_name, optimizer, num_epoch, data, mask_type="perClass", k
         acc_test = accuracy(out[data.test_mask_final], data.y[data.test_mask_final])
 
         if keepResult:
-            dic = {"model": model_name, "data": data.graph_name, "mask": mask_type,
+            dic = {"model": model.model_name, "data": data.graph_name, "mask": mask_type,
                    "epoch_number": epoch+1, "epoch_time":time.time() - t,
                    "training_loss": loss_train.cpu().detach().numpy(), "training_accuracy": acc_train,
                    "validation_loss":loss_val.cpu().detach().numpy(), "validation_accuracy": acc_val,
-                   "test_loss":loss_test.cpu().detach().numpy(), "test_accuracy":acc_test}
+                   "test_loss":loss_test.cpu().detach().numpy(), "test_accuracy":acc_test, "iteration_number":iter_num}
 
             detailDF = appendDF(detailDF, dic)
 
         if verbose:
            print( detailDF.loc[:, ["epoch_number", "epoch_time", "training_loss", "validation_loss", "test_loss",
-                                   "training_accuracy", "validation_accuracy", "test_accuracy"] ].iloc[-1, :])
+                                   "training_accuracy", "validation_accuracy", "test_accuracy"]].iloc[-1, :])
            print("\n")
 
         loss_train.backward()
@@ -67,7 +62,7 @@ def train(model, model_name, optimizer, num_epoch, data, mask_type="perClass", k
     return model, optimizer, detailDF
 
 ######################################################################################################################### def test
-def test(model, model_name, data, mask_type="manualMask", keepResult=True, verbose=True):
+def test(model, model_name, data, mask_type="manualMask", keepResult=True, verbose=True, iter_num=None):
 
     sumDF = TrainValidationTestDF()
 
@@ -100,7 +95,7 @@ def test(model, model_name, data, mask_type="manualMask", keepResult=True, verbo
         dic = {"model": model_name, "data": data.graph_name, "mask": mask_type, "model_accuracy": acc_model.item(),
                "training_loss": loss_train.cpu().detach().numpy(), "training_accuracy": acc_train,
                "validation_loss": loss_val.cpu().detach().numpy(), "validation_accuracy": acc_val,
-               "test_loss": loss_test.cpu().detach().numpy(), "test_accuracy": acc_test}
+               "test_loss": loss_test.cpu().detach().numpy(), "test_accuracy": acc_test, "iteration_number":iter_num}
 
         sumDF = appendDF(sumDF, dic)
 
