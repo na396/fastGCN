@@ -1,6 +1,7 @@
 To run the experiment for spectrumMLP, you should run "main_spectrumMLP.py".
-Inside this script, 'parameters_spectrumMLP.py' is imported which includes the parameter settings of the network, and architecture.
+
 Network parameters and hyper-parameters are defined in 'parameters_spectrumMLP.py'. This package is imported in the early stage of 'main_spectrumMLP.py'.
+
 In addition, inside the 'main_spectrumMLP.py', you need to identify the below manually
 
 root_dir includes the directory (path) to there folder that inculdes the 'main_spectrumMLP.py' like
