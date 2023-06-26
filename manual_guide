@@ -1,0 +1,18 @@
+To run the experiment for spectrumMLP, you should run "main_spectrumMLP.py".
+Inside this script, 'parameters_spectrumMLP.py' is imported which includes the parameter settings of the network, and architecture.
+Network parameters and hyper-parameters are defined in 'parameters_spectrumMLP.py'. This package is imported in the early stage of 'main_spectrumMLP.py'.
+In addition, inside the 'main_spectrumMLP.py', you need to identify the below manually
+
+root_dir includes the directory (path) to there folder that inculdes the 'main_spectrumMLP.py' like
+        root_dir = "Y:/Root/Study/PhD - All/Contributions/Paper 4 - ICML - GNN/Code"
+dataset_name is a list of dataset names, like
+        dataset_name = ["Cora", "CiteSeer", "PubMed", "WikiCs", "Arxiv", "Products"] # dataset name
+learning_rate = 0.01 => learning rate
+num_epoch = 5000 => number of epoch
+use_cache = True => if True, it used the stored embedding vectors, otherwise, it will calculate the embedding
+
+inside the script you also see three nested for loops the parameters are as follow
+coeff is either 2 or 4 which indicates the number of selected vectors of data embedding, 2*k or 4*k where k is the number of classes.
+embedd: either 'symmetric', 'non-symmetric', and 'deepawalk'
+weight_decay: either 0 or 0.01, value for weight_decay in pytorch
+iteration 0 to 9 runs one network with the same configuration on 10 different initializations.
