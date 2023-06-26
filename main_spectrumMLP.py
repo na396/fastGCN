@@ -90,7 +90,8 @@ for coeff in [2, 4]:
                                       ncol=coeff * graph.num_nodes, drp_first=True, use_cache=use_cache, mode=embed)
 
                 elif embed=="deepwalk":
-                    graph.embedding_vectors = deepwalk(data=graph, emb_dim=deepwalk_emb_dim, learning_rate=deepwalk_lr,
+                    graph.embedding_vectors = deepwalk(data=graph, root_dir=root_dir, dataset_name=ds,
+                                                       emb_dim=deepwalk_emb_dim, learning_rate=deepwalk_lr,
                                                        n_epoch=deepwalk_epoch, mask_type="original",
                                                        batch_size=deepwalk_batchSize)
 

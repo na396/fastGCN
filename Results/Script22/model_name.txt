@@ -1,1 +1,0 @@
-coeff=4+embed=deepwalk+weight_decay=0.01

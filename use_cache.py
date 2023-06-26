@@ -6,7 +6,10 @@ from train import *
 from utils import *
 from parameters_spectrumMLP import *
 
-ncol=100
+learning_rate = 0.01
+num_epoch = 5
+use_cache = True
+
 root_dir = "Y:/Root/Study/PhD - All/Contributions/Paper 4 - ICML - GNN/Code"
 
 dataset_name = ["Cora", "CiteSeer", "PubMed", "WikiCs"] # dataset name
@@ -26,19 +29,8 @@ for ds in dataset_name:
                                                 val_percent_allClasses, val_num_allClasses,
                                                 verbose=data_verobse)
 
-    k = graph.num_nodes if ncol == 0 else ncol + 1
+    embed = deepwalk(data=graph, emb_dim=deepwalk_emb_dim, learning_rate=deepwalk_lr,
+                        n_epoch=deepwalk_epoch, mask_type="original", batch_size=deepwalk_batchSize)
 
-    x, edge_index = graph.x, graph.edge_index
-    deg = degree(edge_index[0])
-    A = to_scipy_sparse_matrix(edge_index=edge_index).tocsr()
-    D = spdiags(1 / deg.sqrt(), 0, graph.num_nodes, graph.num_nodes)
-
-    DA = D.dot(A)
-    L = DA.dot(D)
-    X, Y = eigsh(A=L, k=k, which='LM')
-
-    cache_dir_egval = root_dir + "/Cache/eigval_embedding_" + "Cora" + ".pt"
-    cache_dir_egvec = root_dir + "/Cache/eigvec_embedding_" + "Cora" + ".pt"
-
-    torch.save(X, cache_dir_egval)
-    torch.save(Y, cache_dir_egvec)
+    cache_dir = root_dir + "/Cache/deepwalk_embedding_" + str(dataset_name) + ".pt"
+    torch.save(embed, cache_dir)

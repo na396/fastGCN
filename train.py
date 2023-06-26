@@ -31,11 +31,13 @@ def train(model, optimizer, num_epoch, data, mask_type="perClass", keepResult=Tr
     t = time.time()
     model.train()
     for epoch in range(num_epoch):
+
         optimizer.zero_grad()
         out = model(data)
 
         loss_train = F.nll_loss(out[data.train_mask_final], data.y[data.train_mask_final])
         acc_train = accuracy(out[data.train_mask_final], data.y[data.train_mask_final])
+
         loss_val = F.nll_loss(out[data.val_mask_final], data.y[data.val_mask_final])
         acc_val = accuracy(out[data.val_mask_final], data.y[data.val_mask_final])
 
@@ -52,8 +54,8 @@ def train(model, optimizer, num_epoch, data, mask_type="perClass", keepResult=Tr
             detailDF = appendDF(detailDF, dic)
 
         if verbose:
-           print( detailDF.loc[:, ["epoch_number", "epoch_time", "training_loss", "validation_loss", "test_loss",
-                                   "training_accuracy", "validation_accuracy", "test_accuracy"]].iloc[-1, :])
+           print(detailDF.loc[:, ["epoch_number", "epoch_time", "training_loss", "validation_loss", "test_loss",
+                                 "training_accuracy", "validation_accuracy", "test_accuracy"]].iloc[-1, :])
            print("\n")
 
         loss_train.backward()

@@ -185,7 +185,8 @@ class dynamicMLP(Module):
         self.relu = ReLU()
         for i in range(len(self.dims) - 1):
             self.linears.append(Linear(dims[i], dims[i+1], bias=self.bias))
-            if self.add_relu: self.linears.append(self.relu)
+            if self.add_relu and i < (len(self.dims)-2):
+                self.linears.append(self.relu)
 
         self.reset_parameters()
 
@@ -203,9 +204,10 @@ class dynamicMLP(Module):
 
     ############################ forward
     def forward(self, x):
+
         # performs multi-layared perceptron
         # it takes x as the input (i.e. either symmetric spectral embedding, non-symmetric spectral embedding,
-        #                                       deep walk network embedding
+        #                           deep walk network embedding
         #      x: feature map
 
         for layer in self.linears:

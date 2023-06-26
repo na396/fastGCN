@@ -384,7 +384,8 @@ def embedding(data, dataset_name, root_dir, ncol=0, drp_first=True, use_cache = 
         return data
 
 ######################################################################################################################### def deepwalk
-def deepwalk(data, emb_dim=128, learning_rate=0.01, n_epoch=1000, mask_type="original", batch_size=128):
+def deepwalk(data, root_dir, dataset_name,
+             emb_dim=128, learning_rate=0.01, n_epoch=1000, mask_type="original", batch_size=128, use_cache=True):
 
     print(f"calculating deepwalk, it may take time!")
     t = time.time()
@@ -402,20 +403,27 @@ def deepwalk(data, emb_dim=128, learning_rate=0.01, n_epoch=1000, mask_type="ori
         data.val_mask_final = data.valMask_perClass
         data.test_mask_final = data.testMask_perClass
 
-    g = to_dgl(data)
-    mdl = DeepWalk(g, emb_dim=emb_dim)
-    dataloader = DataLoader(torch.arange(g.num_nodes()), batch_size=batch_size,
-                            shuffle=True, collate_fn=mdl.sample)
-    opt = SparseAdam(mdl.parameters(), lr=learning_rate)
+    if use_cache:
+        cache_dir = root_dir + "/Cache/eigval_embedding_" + str(dataset_name) + ".pt"
+        dw = torch.load(cache_dir, map_location=torch.device('cpu'))
+        return dw
 
-    for epoch in range(n_epoch):
-        for batch_walk in dataloader:
-            loss = mdl(batch_walk)
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
+    else:
+        g = to_dgl(data)
+        mdl = DeepWalk(g, emb_dim=emb_dim)
+        dataloader = DataLoader(torch.arange(g.num_nodes()), batch_size=batch_size,
+                                shuffle=True, collate_fn=mdl.sample)
+        opt = SparseAdam(mdl.parameters(), lr=learning_rate)
 
-    print(f"deep walk takes {time.time() - t}")
+        for epoch in range(n_epoch):
+            for batch_walk in dataloader:
+                loss = mdl(batch_walk)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+
+        print(f"deep walk takes {time.time() - t}")
+
     return mdl.node_embed.weight.detach()
 
 ######################################################################################################################### def trainValidation_inClassSplit
@@ -555,7 +563,7 @@ def trainValidationTest_splitAllClasses(data, train_percent=None, train_num=None
 ######################################################################################################################### def to_dgl
 def to_dgl(data):
 
-    # cinverts data object to dgl object
+    # converts data object to dgl object
 
 
     row, col = data.edge_index
