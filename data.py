@@ -404,7 +404,7 @@ def deepwalk(data, root_dir, dataset_name,
         data.test_mask_final = data.testMask_perClass
 
     if use_cache:
-        cache_dir = root_dir + "/Cache/eigval_embedding_" + str(dataset_name) + ".pt"
+        cache_dir = root_dir + "/Cache/deepwalk_embedding_" + str(dataset_name) + ".pt"
         dw = torch.load(cache_dir, map_location=torch.device('cpu'))
         return dw
 
