@@ -30,7 +30,7 @@ deepwalk_maskType = "original"
 deepwalk_batchSize = 128
 deepwalk_emb_dim=128
 
-data_verobse = True
+data_verbose = True
 #
 train_verbose = True
 train_keep = True

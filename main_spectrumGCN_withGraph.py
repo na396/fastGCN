@@ -1,4 +1,4 @@
-r"""
+"""
 
 
 # This is a sample Python script.
@@ -21,10 +21,13 @@ from parameters_spectrumGCN import *
 ######################################################################################################################### hyper-parameter initialization
 torch.manual_seed(123)
 
-root_dir = "Y:/Root/Study/PhD - All/Contributions/Paper 4 - ICML - GNN/Code"
+
+#root_dir = "Y:/Root/Study/PhD - All/Contributions/Paper 4 - ICML - GNN/Code"
 #root_dir = "/home/n/na396/fastGCN" # directory to store the data
 #root_dir = '/content/drive/MyDrive/Code'
 #root_dir = "D:/Niloo's Project"
+
+root_dir = "C:/Users/ikoutis/Documents/GitHub/fastGCN"
 
 #########################################################################################################################
 

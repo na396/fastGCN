@@ -1,4 +1,4 @@
-r"""
+"""
 
 
 # This is a sample Python script.
@@ -18,11 +18,12 @@ from utils import *
 from parameters_spectrumMLP import *
 
 ######################################################################################################################### hyper-parameter initialization
-root_dir = "Y:/Root/Study/PhD - All/Contributions/Paper 4 - ICML - GNN/Code"
+#root_dir = "Y:/Root/Study/PhD - All/Contributions/Paper 4 - ICML - GNN/Code"
 #root_dir = "/home/n/na396/fastGCN" # directory to store the data
 #root_dir = '/content/drive/MyDrive/Code'
 #root_dir = "D:/Niloo's Project"
 
+root_dir = "C:/Users/ikoutis/Documents/GitHub/fastGCN"
 #########################################################################################################################
 
 #dataset_name = ["Cora", "CiteSeer", "PubMed", "WikiCs", "Arxiv", "Products"] # dataset name
@@ -49,16 +50,21 @@ if device.type == 'cuda':
 # graph: a list of prepared graph datasets
 
 learning_rate = 0.01
-num_epoch = 5
+num_epoch = 1
+num_exp = 1                                        # number of experiments
 use_cache = True
+embedding_list = ["non-symmetric", "symmetric"]    # "deepwalk can be added"
+coeff_list = [2]
+weight_decay_list = [0]                            # add other real number is needed
+
 
 script_number = 10
 epochResults = epochPerformanceDF()  # detailed of each epoch for train and validation set, both accuracy and loss
 summaryResults = TrainValidationTestDF()  # summary of trained model for train, validation, and test, both accuracy and loss
 
-for coeff in [2, 4]:
-    for embed in ["non-symmetric", "symmetric", "deepwalk"]:
-        for weight_decay in [0, 0.01]:
+for coeff in coeff_list:
+    for embed in embedding_list:
+        for weight_decay in weight_decay_list:
 
             script_number += 1
             name = f"coeff={coeff}+embed={embed}+weight_decay={weight_decay}"
@@ -77,11 +83,11 @@ for coeff in [2, 4]:
                 graph = trainValidationTest_splitPerClass(data=graph, trainVal_percent=trainVal_percent_perClass,
                                                           train_percent=train_percent_perClass,
                                                           train_num=train_num_perClass, val_num=val_num_perClass,
-                                                          verbose=data_verobse)
+                                                          verbose=data_verbose)
 
                 graph = trainValidationTest_splitAllClasses(graph, train_percent_allClasses, train_num_allClasses,
                                                             val_percent_allClasses, val_num_allClasses,
-                                                            verbose=data_verobse)
+                                                            verbose=data_verbose)
 
                 graph.dir = root_dir
 
@@ -95,7 +101,7 @@ for coeff in [2, 4]:
                                                        n_epoch=deepwalk_epoch, mask_type="original",
                                                        batch_size=deepwalk_batchSize)
 
-                for iter_num in range(10):
+                for iter_num in range(num_exp):
 
                     ##################################################### model: spectrumMLP
                     gt = time.time()
