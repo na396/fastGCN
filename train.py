@@ -12,10 +12,7 @@ def train(model, optimizer, num_epoch, data, mask_type="perClass", keepResult=Tr
     # opt: optimizer
     # num_epoch: number of epoch
     # data: input semi-supervised graph
-    deltaResults = {}
-    increment_len = 5
-    increment_counter = 0 
-    iter_index = 5
+
     if mask_type == "allClasses":
         data.train_mask_final = data.trainMask_allClasses
         data.val_mask_final = data.valMask_allClasses
@@ -47,15 +44,6 @@ def train(model, optimizer, num_epoch, data, mask_type="perClass", keepResult=Tr
         loss_test = F.nll_loss(out[data.test_mask_final], data.y[data.test_mask_final])
         acc_test = accuracy(out[data.test_mask_final], data.y[data.test_mask_final])
 
-        increment_counter+=1
-        if iter_index not in deltaResults:
-            deltaResults[iter_index] = (acc_val, acc_test)
-        elif deltaResults[iter_index][0] < acc_val:
-            deltaResults[iter_index] = (acc_val, acc_test)
-        if increment_counter == increment_len:
-            increment_counter = 0
-            iter_index+=increment_len
-
         if keepResult:
             dic = {"model": model.model_name, "data": data.graph_name, "mask": mask_type,
                    "epoch_number": epoch+1, "epoch_time":time.time() - t,
@@ -73,7 +61,7 @@ def train(model, optimizer, num_epoch, data, mask_type="perClass", keepResult=Tr
         loss_train.backward()
         optimizer.step()
 
-    return model, optimizer, detailDF, deltaResults
+    return model, optimizer, detailDF
 
 ######################################################################################################################### def test
 def test(model, model_name, data, mask_type="manualMask", keepResult=True, verbose=True, iter_num=None):
